@@ -1,0 +1,26 @@
+{
+  "name": "gneiss-mcp",
+  "version": "0.1.0",
+  "description": "A gneiss MCP server for Obsidian vaults",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "gneiss-mcp": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "gray-matter": "^4.0.3"
+  }
+}

@@ -1,14 +1,5 @@
-# Binaries
-gneiss-mcp
-*.exe
-*.dll
-*.so
-*.dylib
-
-# Test
-*.test
-*.out
-coverage.txt
+node_modules/
+dist/
 
 # IDE
 .idea/
@@ -23,3 +14,6 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Test
+coverage/
