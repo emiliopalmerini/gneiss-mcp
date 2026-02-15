@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "name": "gneiss-mcp",
+  "type": "collection",
+  "ignore": ["node_modules"]
+}

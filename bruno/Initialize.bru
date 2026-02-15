@@ -1,0 +1,39 @@
+meta {
+  name: Initialize
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json, text/event-stream
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-03-26",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "bruno",
+        "version": "1.0.0"
+      }
+    }
+  }
+}
+
+script:post-response {
+  const sessionId = res.headers.get("mcp-session-id");
+  if (sessionId) {
+    bru.setVar("sessionId", sessionId);
+  }
+}

@@ -1,0 +1,28 @@
+meta {
+  name: Read Resource
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json, text/event-stream
+  mcp-session-id: {{sessionId}}
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "resources/read",
+    "params": {
+      "uri": "gneiss://conventions"
+    }
+  }
+}

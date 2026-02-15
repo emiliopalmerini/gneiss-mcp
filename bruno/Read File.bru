@@ -1,0 +1,31 @@
+meta {
+  name: Read File
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json, text/event-stream
+  mcp-session-id: {{sessionId}}
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "read",
+      "arguments": {
+        "path": "CLAUDE.md"
+      }
+    }
+  }
+}
