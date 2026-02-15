@@ -316,6 +316,249 @@ describe("Vault.rename", () => {
   });
 });
 
+describe("Vault path traversal protection", () => {
+  it("allows valid relative paths", async () => {
+    await createFile("subdir/note.md", "content");
+
+    const result = await vault.read("subdir/note.md");
+    expect(result.content).toContain("content");
+  });
+
+  it("blocks ../ escape on read", async () => {
+    await expect(vault.read("../etc/passwd")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks ../ escape on list", async () => {
+    await expect(vault.list("../")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks ../ escape on create", async () => {
+    await expect(vault.create("../outside.md", "bad")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks ../ escape on move source", async () => {
+    await createFile("legit.md", "ok");
+    await expect(vault.move("../outside.md", "legit.md")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks ../ escape on move dest", async () => {
+    await createFile("legit.md", "ok");
+    await expect(vault.move("legit.md", "../outside.md")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks ../ escape on rename", async () => {
+    await createFile("legit.md", "ok");
+    await expect(vault.rename("../outside.md", "new")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks ../ escape on delete", async () => {
+    await expect(vault.delete("../outside")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks ../ escape on tree", async () => {
+    await expect(vault.tree("../")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks deeply nested escape", async () => {
+    await expect(vault.read("../../../etc/passwd")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+
+  it("blocks path that starts valid but resolves outside", async () => {
+    await createDir("subdir");
+    await expect(vault.read("subdir/../../..")).rejects.toThrow(
+      "Path escapes vault root"
+    );
+  });
+});
+
+describe("Vault.edit", () => {
+  describe("replace mode", () => {
+    it("replaces body, preserves frontmatter for markdown", async () => {
+      await createFile(
+        "note.md",
+        "---\ntags: [a]\n---\n\nOriginal body."
+      );
+
+      await vault.edit("note.md", { mode: "replace", content: "New body." });
+
+      const result = await vault.read("note.md");
+      expect(result.content.trim()).toBe("New body.");
+      expect(result.frontmatter).toEqual({ tags: ["a"] });
+    });
+
+    it("works for non-markdown files", async () => {
+      await createFile("data.txt", "old content");
+
+      await vault.edit("data.txt", { mode: "replace", content: "new content" });
+
+      const result = await vault.read("data.txt");
+      expect(result.content).toBe("new content");
+    });
+  });
+
+  describe("append mode", () => {
+    it("appends to end of file", async () => {
+      await createFile("note.md", "---\ntitle: Test\n---\n\nExisting.");
+
+      await vault.edit("note.md", { mode: "append", content: "\n\nAppended." });
+
+      const result = await vault.read("note.md");
+      expect(result.content).toContain("Existing.");
+      expect(result.content.trimEnd().endsWith("Appended.")).toBe(true);
+    });
+  });
+
+  describe("prepend mode", () => {
+    it("inserts after frontmatter for markdown", async () => {
+      await createFile(
+        "note.md",
+        "---\ntitle: Test\n---\n\nExisting content."
+      );
+
+      await vault.edit("note.md", { mode: "prepend", content: "Prepended.\n\n" });
+
+      const result = await vault.read("note.md");
+      expect(result.content).toMatch(/^Prepended\.\n\n.*Existing content\./s);
+      expect(result.frontmatter).toEqual({ title: "Test" });
+    });
+
+    it("inserts at start for non-markdown", async () => {
+      await createFile("data.txt", "existing");
+
+      await vault.edit("data.txt", { mode: "prepend", content: "prepended\n" });
+
+      const result = await vault.read("data.txt");
+      expect(result.content).toBe("prepended\nexisting");
+    });
+
+    it("inserts at start for markdown without frontmatter", async () => {
+      await createFile("plain.md", "# Heading\n\nBody.");
+
+      await vault.edit("plain.md", { mode: "prepend", content: "Top.\n\n" });
+
+      const result = await vault.read("plain.md");
+      expect(result.content).toMatch(/^Top\.\n\n.*# Heading/s);
+    });
+  });
+
+  describe("find-replace mode", () => {
+    it("replaces first occurrence by default", async () => {
+      await createFile("note.md", "foo bar foo baz");
+
+      await vault.edit("note.md", {
+        mode: "find-replace",
+        find: "foo",
+        replace: "qux",
+      });
+
+      const result = await vault.read("note.md");
+      expect(result.content).toBe("qux bar foo baz");
+    });
+
+    it("replaces all occurrences when all: true", async () => {
+      await createFile("note.md", "foo bar foo baz");
+
+      await vault.edit("note.md", {
+        mode: "find-replace",
+        find: "foo",
+        replace: "qux",
+        all: true,
+      });
+
+      const result = await vault.read("note.md");
+      expect(result.content).toBe("qux bar qux baz");
+    });
+
+    it("throws when find string not found", async () => {
+      await createFile("note.md", "hello world");
+
+      await expect(
+        vault.edit("note.md", {
+          mode: "find-replace",
+          find: "missing",
+          replace: "x",
+        })
+      ).rejects.toThrow("not found");
+    });
+  });
+
+  describe("patch-frontmatter mode", () => {
+    it("merges keys into existing frontmatter", async () => {
+      await createFile(
+        "note.md",
+        "---\ntitle: Old\nstatus: draft\n---\n\nBody."
+      );
+
+      await vault.edit("note.md", {
+        mode: "patch-frontmatter",
+        metadata: { status: "published", category: "blog" },
+      });
+
+      const result = await vault.read("note.md");
+      expect(result.frontmatter).toEqual({
+        title: "Old",
+        status: "published",
+        category: "blog",
+      });
+      expect(result.content).toContain("Body.");
+    });
+
+    it("adds frontmatter to plain markdown", async () => {
+      await createFile("plain.md", "# Heading\n\nBody.");
+
+      await vault.edit("plain.md", {
+        mode: "patch-frontmatter",
+        metadata: { tags: ["new"] },
+      });
+
+      const result = await vault.read("plain.md");
+      expect(result.frontmatter).toEqual({ tags: ["new"] });
+      expect(result.content).toContain("# Heading");
+    });
+
+    it("throws for non-markdown files", async () => {
+      await createFile("data.txt", "text");
+
+      await expect(
+        vault.edit("data.txt", {
+          mode: "patch-frontmatter",
+          metadata: { key: "val" },
+        })
+      ).rejects.toThrow("non-markdown");
+    });
+  });
+
+  it("blocks path traversal", async () => {
+    await expect(
+      vault.edit("../outside.md", { mode: "replace", content: "bad" })
+    ).rejects.toThrow("Path escapes vault root");
+  });
+
+  it("throws on non-existent file", async () => {
+    await expect(
+      vault.edit("ghost.md", { mode: "replace", content: "x" })
+    ).rejects.toThrow();
+  });
+});
+
 describe("Vault.delete", () => {
   it("deletes a file", async () => {
     await createFile("trash.md", "delete me");

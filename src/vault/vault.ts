@@ -1,14 +1,24 @@
 import { readdir, readFile, stat, mkdir, writeFile, rename, rm } from "node:fs/promises";
-import { join, relative, basename, extname, dirname } from "node:path";
+import { join, resolve, relative, basename, extname, dirname } from "node:path";
 import matter from "gray-matter";
-import type { VaultEntry, SearchResult, Frontmatter } from "./types.ts";
+import type { VaultEntry, SearchResult, Frontmatter, EditOperation } from "./types.ts";
 
 export class Vault {
   constructor(readonly root: string) {}
 
+  /** Resolve a user-supplied path and ensure it stays within the vault root. */
+  private resolveSafe(userPath: string): string {
+    const resolvedRoot = resolve(this.root);
+    const resolvedPath = resolve(this.root, userPath);
+    if (resolvedPath !== resolvedRoot && !resolvedPath.startsWith(resolvedRoot + "/")) {
+      throw new Error(`Path escapes vault root: ${userPath}`);
+    }
+    return resolvedPath;
+  }
+
   /** List entries in a directory (relative path from vault root). */
   async list(dirPath = ""): Promise<VaultEntry[]> {
-    const fullPath = join(this.root, dirPath);
+    const fullPath = this.resolveSafe(dirPath);
     const entries = await readdir(fullPath, { withFileTypes: true });
 
     const results: VaultEntry[] = [];
@@ -29,7 +39,7 @@ export class Vault {
   /** Build a tree structure of the vault. */
   async tree(dirPath = "", depth = 3): Promise<string> {
     const lines: string[] = [];
-    await this.buildTree(join(this.root, dirPath), "", depth, lines);
+    await this.buildTree(this.resolveSafe(dirPath), "", depth, lines);
     return lines.join("\n");
   }
 
@@ -68,7 +78,7 @@ export class Vault {
     content: string;
     frontmatter?: Frontmatter;
   }> {
-    const fullPath = join(this.root, filePath);
+    const fullPath = this.resolveSafe(filePath);
     const raw = await readFile(fullPath, "utf-8");
 
     if (extname(filePath) === ".md") {
@@ -125,7 +135,7 @@ export class Vault {
     targetPath: string,
     content?: string
   ): Promise<string> {
-    const fullPath = join(this.root, targetPath);
+    const fullPath = this.resolveSafe(targetPath);
 
     if (targetPath.endsWith("/")) {
       await mkdir(fullPath, { recursive: true });
@@ -138,22 +148,89 @@ export class Vault {
 
   /** Move a file or directory. */
   async move(sourcePath: string, destPath: string): Promise<void> {
-    await rename(join(this.root, sourcePath), join(this.root, destPath));
+    await rename(this.resolveSafe(sourcePath), this.resolveSafe(destPath));
   }
 
   /** Rename a file or directory. */
   async rename(filePath: string, newName: string): Promise<string> {
+    const sourceFullPath = this.resolveSafe(filePath);
     const dir = dirname(filePath);
     const ext = extname(filePath);
     const newPath = join(dir, ext ? `${newName}${ext}` : newName);
-    await rename(join(this.root, filePath), join(this.root, newPath));
+    const destFullPath = this.resolveSafe(newPath);
+    await rename(sourceFullPath, destFullPath);
     return newPath;
   }
 
   /** Delete a file or directory. */
   async delete(targetPath: string): Promise<void> {
-    const fullPath = join(this.root, targetPath);
+    const fullPath = this.resolveSafe(targetPath);
     const s = await stat(fullPath);
     await rm(fullPath, { recursive: s.isDirectory() });
+  }
+
+  /** Edit an existing file with the given operation. */
+  async edit(filePath: string, operation: EditOperation): Promise<void> {
+    const fullPath = this.resolveSafe(filePath);
+    const raw = await readFile(fullPath, "utf-8");
+    const isMd = extname(filePath) === ".md";
+
+    let result: string;
+
+    switch (operation.mode) {
+      case "replace": {
+        if (isMd) {
+          const { data } = matter(raw);
+          result = matter.stringify(operation.content, data);
+        } else {
+          result = operation.content;
+        }
+        break;
+      }
+
+      case "append": {
+        result = raw + operation.content;
+        break;
+      }
+
+      case "prepend": {
+        if (isMd) {
+          const { data, content } = matter(raw);
+          const hasData = Object.keys(data).length > 0;
+          if (hasData) {
+            result = matter.stringify(operation.content + content, data);
+          } else {
+            result = operation.content + raw;
+          }
+        } else {
+          result = operation.content + raw;
+        }
+        break;
+      }
+
+      case "find-replace": {
+        if (!raw.includes(operation.find)) {
+          throw new Error(`Find string not found: "${operation.find}"`);
+        }
+        if (operation.all) {
+          result = raw.replaceAll(operation.find, operation.replace);
+        } else {
+          result = raw.replace(operation.find, operation.replace);
+        }
+        break;
+      }
+
+      case "patch-frontmatter": {
+        if (!isMd) {
+          throw new Error("patch-frontmatter is only supported for non-markdown files");
+        }
+        const { data, content } = matter(raw);
+        const merged = { ...data, ...operation.metadata };
+        result = matter.stringify(content, merged);
+        break;
+      }
+    }
+
+    await writeFile(fullPath, result, "utf-8");
   }
 }

@@ -21,3 +21,10 @@ export interface SearchResult {
   /** Matched line content */
   matches: string[];
 }
+
+export type EditOperation =
+  | { mode: "replace"; content: string }
+  | { mode: "append"; content: string }
+  | { mode: "prepend"; content: string }
+  | { mode: "find-replace"; find: string; replace: string; all?: boolean }
+  | { mode: "patch-frontmatter"; metadata: Record<string, unknown> };

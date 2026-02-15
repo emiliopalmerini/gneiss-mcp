@@ -7,6 +7,7 @@ import { registerCreateTool } from "./create.ts";
 import { registerMoveTool } from "./move.ts";
 import { registerRenameTool } from "./rename.ts";
 import { registerDeleteTool } from "./delete.ts";
+import { registerEditTool } from "./edit.ts";
 
 export function registerTools(server: McpServer, vaultPath: string): void {
   registerListTool(server, vaultPath);
@@ -17,4 +18,5 @@ export function registerTools(server: McpServer, vaultPath: string): void {
   registerMoveTool(server, vaultPath);
   registerRenameTool(server, vaultPath);
   registerDeleteTool(server, vaultPath);
+  registerEditTool(server, vaultPath);
 }
