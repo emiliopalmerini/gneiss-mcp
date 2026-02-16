@@ -31,8 +31,12 @@ body:json {
   }
 }
 
+vars:pre-request {
+  baseUrl: http://localhost:3001
+}
+
 script:post-response {
-  const sessionId = res.headers.get("mcp-session-id");
+  const sessionId = res.headers["mcp-session-id"];
   if (sessionId) {
     bru.setVar("sessionId", sessionId);
   }
