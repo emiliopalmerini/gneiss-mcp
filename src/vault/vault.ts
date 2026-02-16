@@ -1,7 +1,7 @@
 import { readdir, readFile, stat, mkdir, writeFile, rename, rm } from "node:fs/promises";
 import { join, resolve, relative, basename, extname, dirname } from "node:path";
 import matter from "gray-matter";
-import type { VaultEntry, SearchResult, SurfaceResult, Frontmatter, EditOperation } from "./types.ts";
+import type { VaultEntry, SearchResult, SurfaceResult, GraphResult, Frontmatter, EditOperation } from "./types.ts";
 
 export class Vault {
   constructor(readonly root: string) {}
@@ -347,5 +347,153 @@ export class Vault {
         files.push({ relPath: relative(this.root, fullPath), fullPath });
       }
     }
+  }
+
+  /** Extract wikilink targets from markdown content. */
+  private parseWikilinks(content: string): string[] {
+    const re = /\[\[([^\]|#]+)[^\]]*\]\]/g;
+    const seen = new Set<string>();
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(content)) !== null) {
+      seen.add(match[1]!.trim());
+    }
+    return [...seen];
+  }
+
+  /** Resolve a wikilink target to a vault-relative path. */
+  private resolveWikilink(
+    target: string,
+    fileIndex: Map<string, string>
+  ): string | null {
+    let normalized = target;
+    if (normalized.toLowerCase().endsWith(".md")) {
+      normalized = normalized.slice(0, -3);
+    }
+
+    // If target contains a path separator, try exact relative path
+    if (target.includes("/")) {
+      const withExt = normalized + ".md";
+      // Check fileIndex for exact path match
+      for (const [, path] of fileIndex) {
+        if (path === withExt || path.toLowerCase() === withExt.toLowerCase()) {
+          return path;
+        }
+      }
+    }
+
+    // Fallback: match by basename (case-insensitive)
+    return fileIndex.get(normalized.toLowerCase()) ?? null;
+  }
+
+  /** Build forward link index and file basename→path lookup. */
+  private async buildLinkIndex(): Promise<{
+    forward: Map<string, string[]>;
+    fileIndex: Map<string, string>;
+  }> {
+    const files: { relPath: string; fullPath: string }[] = [];
+    await this.collectMarkdownFiles(this.root, files);
+
+    // Build basename→path lookup (case-insensitive)
+    const fileIndex = new Map<string, string>();
+    for (const file of files) {
+      const name = basename(file.relPath, ".md").toLowerCase();
+      fileIndex.set(name, file.relPath);
+    }
+
+    // Build forward link map
+    const forward = new Map<string, string[]>();
+    for (const file of files) {
+      const raw = await readFile(file.fullPath, "utf-8");
+      const targets = this.parseWikilinks(raw);
+      const resolved: string[] = [];
+      for (const target of targets) {
+        const path = this.resolveWikilink(target, fileIndex);
+        resolved.push(path ?? target);
+      }
+      forward.set(file.relPath, resolved);
+    }
+
+    return { forward, fileIndex };
+  }
+
+  /** Traverse the link graph around a root note. */
+  async graph(
+    path: string,
+    options: { depth?: number; direction?: "forward" | "backward" | "both" } = {}
+  ): Promise<GraphResult> {
+    const rootPath = relative(this.root, this.resolveSafe(path));
+    const depth = options.depth ?? 1;
+    const direction = options.direction ?? "both";
+
+    const { forward, fileIndex } = await this.buildLinkIndex();
+
+    // Build backward map
+    const backward = new Map<string, string[]>();
+    for (const [source, targets] of forward) {
+      for (const target of targets) {
+        let list = backward.get(target);
+        if (!list) {
+          list = [];
+          backward.set(target, list);
+        }
+        list.push(source);
+      }
+    }
+
+    // All known file paths for existence checks
+    const allPaths = new Set(fileIndex.values());
+
+    const nodes = new Map<string, number>(); // path → depth
+    const edges: { source: string; target: string }[] = [];
+    const queue: { path: string; depth: number }[] = [{ path: rootPath, depth: 0 }];
+    nodes.set(rootPath, 0);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current.depth >= depth) continue;
+
+      const nextDepth = current.depth + 1;
+      const neighbors: { source: string; target: string }[] = [];
+
+      if (direction === "forward" || direction === "both") {
+        for (const target of forward.get(current.path) ?? []) {
+          neighbors.push({ source: current.path, target });
+        }
+      }
+
+      if (direction === "backward" || direction === "both") {
+        for (const source of backward.get(current.path) ?? []) {
+          neighbors.push({ source, target: current.path });
+        }
+      }
+
+      for (const edge of neighbors) {
+        const neighbor = edge.source === current.path ? edge.target : edge.source;
+
+        // Record edge (deduplicate by checking both directions)
+        const edgeExists = edges.some(
+          (e) => e.source === edge.source && e.target === edge.target
+        );
+        if (!edgeExists) {
+          edges.push(edge);
+        }
+
+        // Queue neighbor if not yet visited
+        if (!nodes.has(neighbor)) {
+          nodes.set(neighbor, nextDepth);
+          queue.push({ path: neighbor, depth: nextDepth });
+        }
+      }
+    }
+
+    return {
+      root: rootPath,
+      nodes: [...nodes.entries()].map(([p, d]) => ({
+        path: p,
+        depth: d,
+        exists: allPaths.has(p),
+      })),
+      edges,
+    };
   }
 }

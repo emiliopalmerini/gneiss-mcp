@@ -30,6 +30,23 @@ export interface SurfaceResult {
   matchedSignals: string[];
 }
 
+export interface GraphNode {
+  path: string;
+  depth: number;
+  exists: boolean;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface GraphResult {
+  root: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
 export type EditOperation =
   | { mode: "replace"; content: string }
   | { mode: "append"; content: string }
