@@ -23,7 +23,7 @@ let
     # Fixed-output derivation — allows network access
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "sha256-x2Xt6GuiJc/NgV5WtLVs5DeBQtNbRDe+rryW7Bwh224=";
+    outputHash = "sha256-llP07ZowQRlfjnUiJ7NLotwguTJHe2uarq5cMOWbElA=";
   };
 in
 
