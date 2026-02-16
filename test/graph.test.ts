@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -208,5 +208,40 @@ describe("edge cases", () => {
       (e) => e.source === "a.md" && e.target === "b.md"
     );
     expect(edgesToB).toHaveLength(1);
+  });
+});
+
+describe("link index caching", () => {
+  it("reuses cached index on repeated calls", async () => {
+    await writeFile(join(vaultDir, "a.md"), "Links to [[b]]");
+    await writeFile(join(vaultDir, "b.md"), "Content");
+
+    const r1 = await vault.graph("a.md", { direction: "forward" });
+    // Add a new file — should NOT appear because the cache is still valid
+    await writeFile(join(vaultDir, "c.md"), "Links to [[a]]");
+    const r2 = await vault.graph("a.md", { direction: "both" });
+
+    expect(r1.nodes).toHaveLength(2);
+    expect(r2.nodes).toHaveLength(2); // c.md not seen — cache hit
+  });
+
+  it("refreshes index after TTL expires", async () => {
+    vi.useFakeTimers();
+
+    try {
+      await writeFile(join(vaultDir, "a.md"), "Links to [[b]]");
+      await writeFile(join(vaultDir, "b.md"), "Content");
+
+      await vault.graph("a.md", { direction: "forward" });
+
+      // Add a backlink file and advance past TTL
+      await writeFile(join(vaultDir, "c.md"), "Links to [[a]]");
+      vi.advanceTimersByTime(60_000);
+
+      const result = await vault.graph("a.md", { direction: "both" });
+      expect(result.nodes.find((n) => n.path === "c.md")).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

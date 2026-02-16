@@ -3,7 +3,15 @@ import { join, resolve, relative, basename, extname, dirname } from "node:path";
 import matter from "gray-matter";
 import type { VaultEntry, SearchResult, SurfaceResult, GraphResult, Frontmatter, EditOperation } from "./types.ts";
 
+const LINK_INDEX_TTL_MS = 30_000;
+
 export class Vault {
+  private linkIndexCache: {
+    forward: Map<string, string[]>;
+    fileIndex: Map<string, string>;
+    timestamp: number;
+  } | null = null;
+
   constructor(readonly root: string) {}
 
   /** Resolve a user-supplied path and ensure it stays within the vault root. */
@@ -385,11 +393,15 @@ export class Vault {
     return fileIndex.get(normalized.toLowerCase()) ?? null;
   }
 
-  /** Build forward link index and file basename→path lookup. */
+  /** Build forward link index and file basename→path lookup (TTL-cached). */
   private async buildLinkIndex(): Promise<{
     forward: Map<string, string[]>;
     fileIndex: Map<string, string>;
   }> {
+    if (this.linkIndexCache && Date.now() - this.linkIndexCache.timestamp < LINK_INDEX_TTL_MS) {
+      return this.linkIndexCache;
+    }
+
     const files: { relPath: string; fullPath: string }[] = [];
     await this.collectMarkdownFiles(this.root, files);
 
@@ -413,7 +425,8 @@ export class Vault {
       forward.set(file.relPath, resolved);
     }
 
-    return { forward, fileIndex };
+    this.linkIndexCache = { forward, fileIndex, timestamp: Date.now() };
+    return this.linkIndexCache;
   }
 
   /** Traverse the link graph around a root note. */
