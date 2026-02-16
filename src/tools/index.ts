@@ -8,12 +8,14 @@ import { registerMoveTool } from "./move.ts";
 import { registerRenameTool } from "./rename.ts";
 import { registerDeleteTool } from "./delete.ts";
 import { registerEditTool } from "./edit.ts";
+import { registerSurfaceTool } from "./surface.ts";
 
 export function registerTools(server: McpServer, vaultPath: string): void {
   registerListTool(server, vaultPath);
   registerTreeTool(server, vaultPath);
   registerReadTool(server, vaultPath);
   registerSearchTool(server, vaultPath);
+  registerSurfaceTool(server, vaultPath);
   registerCreateTool(server, vaultPath);
   registerMoveTool(server, vaultPath);
   registerRenameTool(server, vaultPath);

@@ -22,6 +22,14 @@ export interface SearchResult {
   matches: string[];
 }
 
+export interface SurfaceResult {
+  path: string;
+  score: number;
+  tags: string[];
+  summary?: string;
+  matchedSignals: string[];
+}
+
 export type EditOperation =
   | { mode: "replace"; content: string }
   | { mode: "append"; content: string }

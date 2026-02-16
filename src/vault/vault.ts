@@ -1,7 +1,7 @@
 import { readdir, readFile, stat, mkdir, writeFile, rename, rm } from "node:fs/promises";
 import { join, resolve, relative, basename, extname, dirname } from "node:path";
 import matter from "gray-matter";
-import type { VaultEntry, SearchResult, Frontmatter, EditOperation } from "./types.ts";
+import type { VaultEntry, SearchResult, SurfaceResult, Frontmatter, EditOperation } from "./types.ts";
 
 export class Vault {
   constructor(readonly root: string) {}
@@ -232,5 +232,120 @@ export class Vault {
     }
 
     await writeFile(fullPath, result, "utf-8");
+  }
+
+  /** Surface notes relevant to a query using multi-signal scoring. */
+  async surface(
+    query: string,
+    options: { path?: string; tags?: string[]; limit?: number } = {}
+  ): Promise<SurfaceResult[]> {
+    const limit = options.limit ?? 10;
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return [];
+
+    const startDir = options.path ? this.resolveSafe(options.path) : this.root;
+    const files: { relPath: string; fullPath: string }[] = [];
+    await this.collectMarkdownFiles(startDir, files);
+
+    const results: SurfaceResult[] = [];
+
+    for (const file of files) {
+      const raw = await readFile(file.fullPath, "utf-8");
+      const { data, content } = matter(raw);
+
+      const tags: string[] = Array.isArray(data.tags)
+        ? data.tags.map(String)
+        : [];
+      const aliases: string[] = Array.isArray(data.aliases)
+        ? data.aliases.map(String)
+        : [];
+      const summary: string | undefined =
+        typeof data.summary === "string" ? data.summary : undefined;
+      const fileName = basename(file.relPath, ".md");
+
+      // Tag filter: file must match at least one required tag (OR, with prefix matching)
+      if (options.tags && options.tags.length > 0) {
+        const hasMatch = options.tags.some((reqTag) =>
+          tags.some(
+            (t) =>
+              t.toLowerCase() === reqTag.toLowerCase() ||
+              t.toLowerCase().startsWith(reqTag.toLowerCase() + "/")
+          )
+        );
+        if (!hasMatch) continue;
+      }
+
+      const matchedSignals: string[] = [];
+      let score = 0;
+
+      for (const term of terms) {
+        // Tags (weight 5)
+        if (
+          tags.some(
+            (t) =>
+              t.toLowerCase() === term ||
+              t.toLowerCase().startsWith(term + "/")
+          )
+        ) {
+          score += 5;
+          matchedSignals.push(`tag:${term}`);
+        }
+
+        // Aliases (weight 4)
+        if (aliases.some((a) => a.toLowerCase().includes(term))) {
+          score += 4;
+          matchedSignals.push(`alias:${term}`);
+        }
+
+        // Filename (weight 3)
+        if (fileName.toLowerCase().includes(term)) {
+          score += 3;
+          matchedSignals.push(`filename:${term}`);
+        }
+
+        // Summary (weight 3)
+        if (summary && summary.toLowerCase().includes(term)) {
+          score += 3;
+          matchedSignals.push(`summary:${term}`);
+        }
+
+        // Body (weight 1)
+        if (content.toLowerCase().includes(term)) {
+          score += 1;
+          matchedSignals.push(`body:${term}`);
+        }
+      }
+
+      if (score > 0) {
+        results.push({
+          path: file.relPath,
+          score,
+          tags,
+          summary,
+          matchedSignals,
+        });
+      }
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, limit);
+  }
+
+  private async collectMarkdownFiles(
+    dirPath: string,
+    files: { relPath: string; fullPath: string }[]
+  ): Promise<void> {
+    const entries = await readdir(dirPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = join(dirPath, entry.name);
+
+      if (entry.isDirectory()) {
+        await this.collectMarkdownFiles(fullPath, files);
+      } else if (extname(entry.name) === ".md") {
+        files.push({ relPath: relative(this.root, fullPath), fullPath });
+      }
+    }
   }
 }
