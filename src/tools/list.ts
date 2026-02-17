@@ -7,7 +7,7 @@ export function registerListTool(server: McpServer, vaultPath: string): void {
 
   server.tool(
     "list",
-    "List files and folders in a vault directory",
+    "List files and folders in a single vault directory (non-recursive). Use to browse a known location.",
     { path: z.string().optional().describe("Relative path from vault root. Omit for root.") },
     async ({ path }) => {
       const entries = await vault.list(path ?? "");

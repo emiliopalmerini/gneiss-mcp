@@ -218,6 +218,43 @@ describe("Vault.search", () => {
     expect(results).toHaveLength(1);
     expect(results[0]!.matches).toHaveLength(2);
   });
+
+  it("matches by filename even when content does not match", async () => {
+    await createFile("meetings/standup.md", "nothing relevant here");
+
+    const results = await vault.search("standup");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.path).toBe("meetings/standup.md");
+    expect(results[0]!.matches[0]).toContain("[filename: standup.md]");
+  });
+
+  it("includes filename match alongside content matches", async () => {
+    await createFile("refactor.md", "We need to refactor the API.");
+
+    const results = await vault.search("refactor");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.matches).toContain("[filename: refactor.md]");
+    expect(results[0]!.matches).toContain("We need to refactor the API.");
+  });
+
+  it("matches filename case-insensitively", async () => {
+    await createFile("MeetingNotes.md", "some content");
+
+    const results = await vault.search("meetingnotes");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.matches[0]).toContain("[filename: MeetingNotes.md]");
+  });
+
+  it("does not match on directory name, only basename", async () => {
+    await createFile("projects/unrelated.md", "no match here");
+
+    const results = await vault.search("projects");
+
+    expect(results).toEqual([]);
+  });
 });
 
 describe("Vault.create", () => {

@@ -120,6 +120,12 @@ export class Vault {
       } else if (extname(entry.name) === ".md") {
         const content = await readFile(fullPath, "utf-8");
         const matches: string[] = [];
+        const fileName = basename(entry.name);
+
+        // Match against filename (basename only, without extension)
+        if (basename(fileName, ".md").toLowerCase().includes(query)) {
+          matches.push(`[filename: ${fileName}]`);
+        }
 
         for (const line of content.split("\n")) {
           if (line.toLowerCase().includes(query)) {

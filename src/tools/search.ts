@@ -7,8 +7,8 @@ export function registerSearchTool(server: McpServer, vaultPath: string): void {
 
   server.tool(
     "search",
-    "Search for text across all markdown files in the vault",
-    { query: z.string().describe("Text to search for (case-insensitive)") },
+    "Search vault by filename or content. Matches file names and text inside markdown files (case-insensitive). Use this to find specific files or locate content by keyword.",
+    { query: z.string().describe("Text to search for — matches against filenames and file content (case-insensitive)") },
     async ({ query }) => {
       const results = await vault.search(query);
 

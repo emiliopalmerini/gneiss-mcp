@@ -7,7 +7,7 @@ export function registerGraphTool(server: McpServer, vaultPath: string): void {
 
   server.tool(
     "graph",
-    "Traverse the link graph around a note, following [[wikilinks]] to discover connected notes",
+    "Traverse the [[wikilink]] graph around a note to discover connected notes. Use after finding a relevant note to explore its neighborhood.",
     {
       path: z.string().describe("Relative path to the root note"),
       depth: z.number().optional().describe("Max hops from root (default 1)"),

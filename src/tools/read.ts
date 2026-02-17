@@ -7,7 +7,7 @@ export function registerReadTool(server: McpServer, vaultPath: string): void {
 
   server.tool(
     "read",
-    "Read a file's content. Returns parsed frontmatter and body for markdown files.",
+    "Read a file when you already know its path. Returns parsed frontmatter and body for markdown files.",
     { path: z.string().describe("Relative path to the file from vault root") },
     async ({ path }) => {
       const { content, frontmatter } = await vault.read(path);

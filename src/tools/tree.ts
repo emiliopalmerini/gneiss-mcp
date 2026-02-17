@@ -7,7 +7,7 @@ export function registerTreeTool(server: McpServer, vaultPath: string): void {
 
   server.tool(
     "tree",
-    "Display vault directory tree structure",
+    "Display vault directory tree structure. Use to understand folder layout before navigating.",
     {
       path: z.string().optional().describe("Relative path from vault root. Omit for root."),
       depth: z.number().optional().describe("Max depth to display (default: 3)"),

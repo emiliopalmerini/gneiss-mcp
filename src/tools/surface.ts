@@ -7,7 +7,7 @@ export function registerSurfaceTool(server: McpServer, vaultPath: string): void 
 
   server.tool(
     "surface",
-    "Surface notes relevant to a topic using multi-signal scoring (tags, aliases, filename, summary, body)",
+    "Discover notes relevant to a topic. Ranks results by weighted signals: tags (5), aliases (4), filename (3), summary (3), body (1). Best for exploratory queries when you're not sure what exists.",
     {
       query: z.string().describe("Topic or keywords to surface relevant notes for"),
       path: z.string().optional().describe("Restrict search to a subdirectory"),
